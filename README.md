@@ -4,7 +4,15 @@
 
 ## Overview
 
-This report explains the process of fetching game data from the RAWG API, processing it, storing it in an SQLite database, and finally exporting it to an Excel file. The process is divided into three main scripts: main.py, main_model.py, and DataFrame.py.
+This report explains the process of fetching game data from the RAWG API, processing it, storing it in an SQLite database, and finally exporting it to an Excel file. The process is divided into three main scripts: main.py, main_model.py, and DataFrame.py. The CSV file obtained from the script is used for my AI Game Recommender web-app.
+
+## How to Run
+
+- Install Python
+- Clone this repository into a folder.
+- Open up the terminal within the folder in VSCode
+- Install dependencies with "pip install"
+- Run the scripts e.g. "py main.py"
 
 ## Step-by-Step Process
 
@@ -12,7 +20,7 @@ This report explains the process of fetching game data from the RAWG API, proces
 
 Configuration: The script starts by importing necessary libraries (requests and json) and setting up the API key and base URL for the RAWG API.
 
-Initialization: An empty list all_games is initialized to store the fetched game data. The script is set to start fetching from page 201 to avoid duplicates.
+Initialization: An empty list all_games is initialized to store the fetched game data. The script is set to start fetching from page 1 to avoid duplicates.
 
 Data Fetching Loop:
 
