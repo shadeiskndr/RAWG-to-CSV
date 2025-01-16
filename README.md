@@ -125,5 +125,6 @@ The process is divided into several Python scripts: `main.py` (fetching), `main_
 - **`main_model.py`**: Reads the raw JSON data, cleans text fields (removing HTML, ensuring UTF-8 compatibility), extracts relevant information, and inserts the _cleaned_ data into an SQLite database.
 - **`DataFrame.py`**: Reads the _cleaned_ data from the SQLite database and exports it all to a single Excel file.
 - **`DataFrame2.py`**: Reads the _cleaned_ data from the SQLite database and exports it into multiple, smaller CSV files (batches), ensuring UTF-8 encoding for compatibility.
+- **`DataFrame3.py`**: Reads the _cleaned_ data from the SQLite database and exports it into multiple, smaller JSON files (batches), ensuring UTF-8 encoding for compatibility.
 
 These scripts together form a pipeline for fetching, cleaning, processing, storing, and exporting game data from the RAWG API into formats suitable for analysis or ingestion into other systems.

@@ -2,15 +2,16 @@ import sqlite3
 import pandas as pd
 import math
 import os
+import json
 
 # --- Configuration ---
 # Database filename (should match the output of main_model.py)
 DB_FILENAME = 'game_data_cleaned.db'
-# Base name for output CSV files
-OUTPUT_CSV_BASE_NAME = 'game_data_batch'
-# Directory to save the CSV files (optional, creates if not exists)
-OUTPUT_DIR = 'batched_csv_output'
-# Number of records per CSV file
+# Base name for output JSON files
+OUTPUT_JSON_BASE_NAME = 'game_data_batch'
+# Directory to save the JSON files (optional, creates if not exists)
+OUTPUT_DIR = 'batched_json_output'
+# Number of records per JSON file
 BATCH_SIZE = 500
 # Maximum length for description field (in bytes)
 MAX_DESCRIPTION_BYTES = 7900  # Setting slightly below 8000 for safety
@@ -36,7 +37,7 @@ try:
     total_records = cursor.fetchone()[0]
     print(f"Found {total_records} total records in the 'games' table.")
     if total_records == 0:
-        print("Database table is empty. No CSV files will be generated.")
+        print("Database table is empty. No JSON files will be generated.")
         conn.close()
         exit(0)
     num_batches = math.ceil(total_records / BATCH_SIZE)
@@ -69,28 +70,8 @@ print(f"\nReading data from '{DB_FILENAME}' and exporting in batches of {BATCH_S
 try:
     # Use pandas read_sql_query with chunksize for memory efficiency
     for chunk_df in pd.read_sql_query(query, conn, chunksize=BATCH_SIZE):
-        # Add vecdesc field with the same value as description
-        # and truncate description if needed
-        truncated_count = 0
-        if 'description' in chunk_df.columns:
-            # Process each description to ensure it's within size limits
-            for idx, row in chunk_df.iterrows():
-                if pd.notna(row['description']):
-                    original_desc = row['description']
-                    truncated_desc = truncate_to_max_bytes(original_desc, MAX_DESCRIPTION_BYTES)
-                    
-                    if original_desc != truncated_desc:
-                        truncated_count += 1
-                        chunk_df.at[idx, 'description'] = truncated_desc
-                    
-                    # Set vecdesc to the same (potentially truncated) value
-                    chunk_df.at[idx, 'vecdesc'] = truncated_desc
-        
-        if truncated_count > 0:
-            print(f"  Note: Truncated {truncated_count} descriptions that exceeded {MAX_DESCRIPTION_BYTES} bytes")
-        
         # Define the output filename for this batch
-        output_filename = f"{OUTPUT_CSV_BASE_NAME}_{batch_num}.csv"
+        output_filename = f"{OUTPUT_JSON_BASE_NAME}_{batch_num}.json"
         if OUTPUT_DIR:
             output_filepath = os.path.join(OUTPUT_DIR, output_filename)
         else:
@@ -98,14 +79,35 @@ try:
 
         print(f"Processing batch {batch_num}/{num_batches}... Writing to '{output_filepath}'")
 
-        # Export the current chunk to CSV
-        # Use encoding='utf-8' for compatibility (like with Astra DB)
-        # Use index=False as the database 'id' column is likely the true identifier
-        chunk_df.to_csv(output_filepath, index=False, encoding='utf-8')
+        # Convert DataFrame to JSON and parse it back to a Python object
+        json_data = json.loads(chunk_df.to_json(orient='records', force_ascii=False))
+        
+        # Add vecdesc field and truncate description if needed
+        truncated_count = 0
+        for item in json_data:
+            if 'description' in item and item['description']:
+                # Truncate description if it's too long
+                original_desc = item['description']
+                truncated_desc = truncate_to_max_bytes(original_desc, MAX_DESCRIPTION_BYTES)
+                
+                if original_desc != truncated_desc:
+                    truncated_count += 1
+                
+                item['description'] = truncated_desc
+                # Use the same truncated value for vecdesc
+                item['vecdesc'] = truncated_desc
+        
+        if truncated_count > 0:
+            print(f"  Note: Truncated {truncated_count} descriptions that exceeded {MAX_DESCRIPTION_BYTES} bytes")
+        
+        # Write the JSON data to file with pretty formatting
+        with open(output_filepath, 'w', encoding='utf-8') as json_file:
+            formatted_json = json.dumps(json_data, indent=4, ensure_ascii=False)
+            json_file.write(formatted_json)
 
         batch_num += 1
 
-    print(f"\nSuccessfully exported {total_records} records into {batch_num - 1} CSV files.")
+    print(f"\nSuccessfully exported {total_records} records into {batch_num - 1} JSON files.")
 
 except pd.io.sql.DatabaseError as e:
      print(f"Error reading data from table: {e}")
