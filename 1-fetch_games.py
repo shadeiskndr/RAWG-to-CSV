@@ -5,6 +5,8 @@ import time
 from tqdm import tqdm
 import signal
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 # Load API key from environment variable
 api_key = os.getenv('RAWG_API_KEY')

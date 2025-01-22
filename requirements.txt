@@ -3,3 +3,4 @@ colorama
 beautifulsoup4
 pandas
 tqdm
+python-dotenv

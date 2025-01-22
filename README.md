@@ -8,74 +8,22 @@ This project provides a pipeline to fetch video game data from the [RAWG API](ht
 
 1. Fetch game data from RAWG API (`1-fetch_games.py`)
 2. Clean and store data in SQLite (`2-cleaned_json_to_sqlite.py`)
-3. Optionally fetch missing games by ID (`3-fetch_unfetched_games.py`)
-4. Export data to batched CSV/JSON files (`4-export_sqlite_to_csv_json.py`)
+3. Export data to batched CSV/JSON files (`3-export_sqlite_to_csv_json.py`)
+4. Optionally fetch missing games by ID (`4-fetch_unfetched_games.py`)
 
 ---
 
-## Quickstart: Docker Setup (Recommended)
+## Local Setup
 
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/shadeiskndr/RAWG-to-CSV.git
-cd RAWG-to-CSV
-```
-
-### 2. Prepare Your RAWG API Key
-
-- Copy `.env.example` to `.env` and fill in your RAWG API key:
-  ```
-  RAWG_API_KEY=your_actual_rawg_api_key_here
-  ```
-
-### 3. Build the Docker Image
-
-```bash
-docker build -t rawg-to-csv .
-```
-
-### 4. Run the Container
-
-Mount your working directory to persist outputs, and pass your `.env` file:
-
-```bash
-docker run --rm -it \
-  --env-file .env \
-  -v "$PWD":/app \
-  rawg-to-csv
-```
-
-You will be dropped into a shell inside the container. Now you can run any of your scripts, for example:
-
-```bash
-python 1-fetch_games.py
-python 2-cleaned_json_to_sqlite.py
-python 4-export_sqlite_to_csv_json.py --format both
-```
-
-Or run a script directly:
-
-```bash
-docker run --rm \
-  --env-file .env \
-  -v "$PWD":/app \
-  rawg-to-csv python 1-fetch_games.py
-```
-
----
-
-## Local Setup (Alternative)
-
-### 1. Set Up a Virtual Environment
+### Set Up a Virtual Environment
 
 ```bash
 python3 -m venv venv
 ```
 
-- Activate on Linux/macOS:
+- Activate on Windows (Git Bash):
   ```bash
-  source venv/bin/activate
+  source venv/Scripts/activate
   ```
 - Activate on Windows (cmd):
   ```bash
@@ -85,11 +33,15 @@ python3 -m venv venv
   ```bash
   .\venv\Scripts\Activate.ps1
   ```
+- Activate on Linux/macOS:
+  ```bash
+  source venv/bin/activate
+  ```
 
 ### 2. Install Dependencies
 
 ```bash
-pip install requests colorama beautifulsoup4 pandas tqdm
+pip install -r requirements.txt
 ```
 
 ### 3. Set RAWG API Key
@@ -129,27 +81,12 @@ python 2-cleaned_json_to_sqlite.py
 
 ---
 
-### Step 3 (Optional): Fetch Unfetched Games by ID
-
-If you have a list of game IDs (e.g., from another source) and want to fetch only those not already in your database:
-
-1. Place your candidate IDs (one per line) in `all_candidate_ids.txt`.
-2. Run:
-
-```bash
-python 3-fetch_unfetched_games.py
-```
-
-- **Output:** `newly_fetched_games.json` (can be merged and processed with Step 2)
-
----
-
-### Step 4: Export Data to Batched CSV/JSON Files
+### Step 3: Export Data to Batched CSV/JSON Files
 
 Exports the cleaned SQLite data to batches of CSV and/or JSON files (default batch size: 500 records per file).
 
 ```bash
-python 4-export_sqlite_to_csv_json.py --format both
+python 3-export_sqlite_to_csv_json.py --format both
 ```
 
 - `--format` can be `csv`, `json`, or `both` (default: both)
@@ -161,63 +98,34 @@ python 4-export_sqlite_to_csv_json.py --format both
 
 ---
 
-## File/Script Overview
+### Step 4 (Optional): Fetch Unfetched Games by ID
 
-| Script/File                      | Purpose                                                      |
-| -------------------------------- | ------------------------------------------------------------ |
-| `1-fetch_games.py`               | Fetches game data from RAWG API and saves as JSON.           |
-| `2-cleaned_json_to_sqlite.py`    | Cleans JSON data and loads it into an SQLite database.       |
-| `3-fetch_unfetched_games.py`     | Fetches details for game IDs not already in the database.    |
-| `4-export_sqlite_to_csv_json.py` | Exports SQLite data to batched CSV and/or JSON files.        |
-| `.env.example`                   | Example environment file for RAWG API key.                   |
-| `fetched_games.json`             | Output of step 1: raw game data from RAWG API.               |
-| `game_data_cleaned.db`           | Output of step 2: cleaned data in SQLite format.             |
-| `all_candidate_ids.txt`          | Input for step 3: list of candidate game IDs (one per line). |
-| `newly_fetched_games.json`       | Output of step 3: newly fetched games by ID.                 |
-| `batched_csv_output/`            | Output directory for CSV batches.                            |
-| `batched_json_output/`           | Output directory for JSON batches.                           |
+If you have a list of game IDs (e.g., from another source) and want to fetch only those not already in your database:
+
+1. Run:
+
+```bash
+python 4-fetch_unfetched_games.py
+```
+
+- **Output:** `newly_fetched_games.json` (can be merged and processed with Step 2)
 
 ---
 
-## Docker Details
+## File/Script Overview
 
-### Dockerfile
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-ENV PYTHONIOENCODING=utf-8
-
-CMD ["bash"]
-```
-
-### requirements.txt
-
-```txt
-requests
-colorama
-beautifulsoup4
-pandas
-tqdm
-```
-
-### .dockerignore
-
-```dockerignore
-.env
-```
+| Script/File                      | Purpose                                                   |
+| -------------------------------- | --------------------------------------------------------- |
+| `1-fetch_games.py`               | Fetches game data from RAWG API and saves as JSON.        |
+| `2-cleaned_json_to_sqlite.py`    | Cleans JSON data and loads it into an SQLite database.    |
+| `3-export_sqlite_to_csv_json.py` | Exports SQLite data to batched CSV and/or JSON files.     |
+| `4-fetch_unfetched_games.py`     | Fetches details for game IDs not already in the database. |
+| `.env.example`                   | Example environment file for RAWG API key.                |
+| `fetched_games.json`             | Output of step 1: raw game data from RAWG API.            |
+| `game_data_cleaned.db`           | Output of step 2: cleaned data in SQLite format.          |
+| `newly_fetched_games.json`       | Output of step 3: newly fetched games by ID.              |
+| `batched_csv_output/`            | Output directory for CSV batches.                         |
+| `batched_json_output/`           | Output directory for JSON batches.                        |
 
 ---
 
@@ -226,7 +134,7 @@ tqdm
 - **API Rate Limiting:** Scripts respect RAWG API rate limits (10 requests/sec). If you hit limits, increase sleep times.
 - **Interruptions:** `1-fetch_games.py` saves progress on interruption (Ctrl+C).
 - **Data Cleaning:** All text fields are cleaned for UTF-8 and HTML tags are removed from descriptions.
-- **Batch Export:** Batch size and output directories can be changed at the top of `4-export_sqlite_to_csv_json.py`.
+- **Batch Export:** Batch size and output directories can be changed at the top of `3-export_sqlite_to_csv_json.py`.
 - **Custom Input/Output:** You can change input/output filenames by editing the constants at the top of each script.
 
 ---
@@ -241,13 +149,13 @@ tqdm
    ```bash
    python 2-cleaned_json_to_sqlite.py
    ```
-3. (Optional) Fetch missing games by ID:
+3. Export to CSV/JSON batches:
    ```bash
-   python 3-fetch_unfetched_games.py
+   python 3-export_sqlite_to_csv_json.py --format both
    ```
-4. Export to CSV/JSON batches:
+4. (Optional) Fetch missing games by ID:
    ```bash
-   python 4-export_sqlite_to_csv_json.py --format both
+   python 4-fetch_unfetched_games.py
    ```
 
 ---
