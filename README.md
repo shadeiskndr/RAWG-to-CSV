@@ -1,21 +1,22 @@
-# RAWG-to-CSV
+# RAWG-to-VectorDB
 
 ## Overview
 
-This project provides a pipeline to fetch video game data from the [RAWG API](https://rawg.io/apidocs), clean and store it in an SQLite database, and export it to CSV or JSON files in batches. The pipeline ensures all text is UTF-8 compatible and cleans HTML from descriptions, making the data suitable for downstream applications such as analytics, machine learning, or ingestion into other databases.
+This project provides a robust pipeline to fetch video game data from the [RAWG API](https://rawg.io/apidocs), clean and store it in an SQLite database, filter by platform, generate OpenAI vector embeddings, and ingest the results into a vector-enabled Astra DB collection. The pipeline ensures all text is UTF-8 compatible, strips HTML from descriptions, and is suitable for downstream analytics, search, or AI applications.
 
-**Main Steps:**
+**Pipeline Steps:**
 
-1. Fetch game data from RAWG API (`1-fetch_games.py`)
-2. Clean and store data in SQLite (`2-cleaned_json_to_sqlite.py`)
-3. Export data to batched CSV/JSON files (`3-export_sqlite_to_csv_json.py`)
-4. Optionally fetch missing games by ID (`4-fetch_unfetched_games.py`)
+1. Fetch game data from RAWG API into SQLite (`1-fetch_games_by_page.py`)
+2. Optionally fetch missing games by ID (`2-fetch_unfetched_games_by_id.py`)
+3. Filter games by platform (e.g., PlayStation) into a new SQLite DB (`3-filter_games_by_platform.py`)
+4. Generate OpenAI vector embeddings for each game (`4-generate_embeddings.py`)
+5. Ingest the enriched data into Astra DB (`5-ingest_to_astra_db.py`)
 
 ---
 
 ## Local Setup
 
-### Set Up a Virtual Environment
+### 1. Set Up a Virtual Environment
 
 ```bash
 python3 -m venv venv
@@ -44,12 +45,18 @@ python3 -m venv venv
 pip install -r requirements.txt
 ```
 
-### 3. Set RAWG API Key
+### 3. Set Environment Variables
 
-- Copy `.env.example` to `.env` and fill in your RAWG API key, or set the environment variable in your shell:
+- Copy `.env.example` to `.env` and fill in your API keys and Astra DB info:
   ```bash
-  export RAWG_API_KEY=your_actual_rawg_api_key_here
+  cp .env.example .env
   ```
+  Edit `.env` and set:
+  - `RAWG_API_KEY`
+  - `OPENAI_API_KEY`
+  - `ASTRA_DB_API_ENDPOINT`
+  - `ASTRA_DB_APPLICATION_TOKEN`
+  - `ASTRA_DB_COLLECTION_NAME`
 
 ---
 
@@ -57,85 +64,96 @@ pip install -r requirements.txt
 
 ### Step 1: Fetch Game Data from RAWG API
 
-Fetches up to 4000 games (200 pages × 20 games per page) and saves detailed info to `fetched_games.json`.
+Fetches pages of games from the RAWG API, retrieves full details for each game, cleans and normalizes the data, and stores it directly in `game_data_live.db` (SQLite).
 
 ```bash
-python 1-fetch_games.py
+python 1-fetch_games_by_page.py
 ```
 
-- **Output:** `fetched_games.json`
-- Handles interruptions gracefully (Ctrl+C will save progress).
+- **Output:** `game_data_live.db`
+- Handles interruptions gracefully (Ctrl+C will flush and exit safely).
+- You can adjust `PAGE_SIZE`, `MAX_PAGES`, and `BATCH_SIZE` at the top of the script.
 
 ---
 
-### Step 2: Clean and Store Data in SQLite
+### Step 2 (Optional): Fetch Unfetched Games by ID
 
-Reads the raw JSON, cleans all text fields (removes HTML, enforces UTF-8), and inserts into `game_data_cleaned.db`.
+If you want to fill gaps in your database (e.g., for specific IDs), this script checks which IDs are missing in `game_data_live.db` and fetches them individually.
 
 ```bash
-python 2-cleaned_json_to_sqlite.py
+python 2-fetch_unfetched_games_by_id.py
 ```
 
-- **Input:** `fetched_games.json` (or change `INPUT_JSON` at the top of the script)
-- **Output:** `game_data_cleaned.db` (SQLite database)
+- **Output:** Adds missing games to `game_data_live.db`
+- Configure the ID range (`START_ID`, `END_ID`) at the top of the script.
 
 ---
 
-### Step 3: Export Data to Batched CSV/JSON Files
+### Step 3: Filter Games by Platform
 
-Exports the cleaned SQLite data to batches of CSV and/or JSON files (default batch size: 500 records per file).
+Filters games in `game_data_live.db` by platform keyword(s) (e.g., "PlayStation") and writes the filtered, cleaned results to `game_data_filtered.db`.
 
 ```bash
-python 3-export_sqlite_to_csv_json.py --format both
+python 3-filter_games_by_platform.py
 ```
 
-- `--format` can be `csv`, `json`, or `both` (default: both)
-- **Outputs:**
-  - CSV files in `batched_csv_output/`
-  - JSON files in `batched_json_output/`
-- Each file contains up to 500 records.
-- Descriptions are truncated to ~7900 bytes for compatibility.
+- **Output:** `game_data_filtered.db`
+- Edit `PLATFORM_KEYWORDS` in the script to filter for different platforms.
 
 ---
 
-### Step 4 (Optional): Fetch Unfetched Games by ID
+### Step 4: Generate OpenAI Embeddings
 
-If you have a list of game IDs (e.g., from another source) and want to fetch only those not already in your database:
-
-1. Run:
+Generates OpenAI vector embeddings for each row in `game_data_filtered.db` and stores them in a new `embedding` column.
 
 ```bash
-python 4-fetch_unfetched_games.py
+python 4-generate_embeddings.py
 ```
 
-- **Output:** `newly_fetched_games.json` (can be merged and processed with Step 2)
+- **Output:** Adds an `embedding` column to `game_data_filtered.db`
+- Requires `OPENAI_API_KEY` in your `.env`
+- Uses the `text-embedding-3-large` model by default.
+
+---
+
+### Step 5: Ingest to Astra DB
+
+Streams all rows from `game_data_filtered.db` (with embeddings) into your Astra DB vector collection.
+
+```bash
+python 5-ingest_to_astra_db.py
+```
+
+- **Output:** Data ingested into your Astra DB collection
+- Requires Astra DB environment variables in your `.env`
+- Handles batching and retries for robust ingestion.
 
 ---
 
 ## File/Script Overview
 
-| Script/File                      | Purpose                                                   |
-| -------------------------------- | --------------------------------------------------------- |
-| `1-fetch_games.py`               | Fetches game data from RAWG API and saves as JSON.        |
-| `2-cleaned_json_to_sqlite.py`    | Cleans JSON data and loads it into an SQLite database.    |
-| `3-export_sqlite_to_csv_json.py` | Exports SQLite data to batched CSV and/or JSON files.     |
-| `4-fetch_unfetched_games.py`     | Fetches details for game IDs not already in the database. |
-| `.env.example`                   | Example environment file for RAWG API key.                |
-| `fetched_games.json`             | Output of step 1: raw game data from RAWG API.            |
-| `game_data_cleaned.db`           | Output of step 2: cleaned data in SQLite format.          |
-| `newly_fetched_games.json`       | Output of step 3: newly fetched games by ID.              |
-| `batched_csv_output/`            | Output directory for CSV batches.                         |
-| `batched_json_output/`           | Output directory for JSON batches.                        |
+| Script/File                        | Purpose                                                 |
+| ---------------------------------- | ------------------------------------------------------- |
+| `1-fetch_games_by_page.py`         | Fetches games from RAWG API and stores them in SQLite.  |
+| `2-fetch_unfetched_games_by_id.py` | Fetches missing games by ID and adds them to SQLite.    |
+| `3-filter_games_by_platform.py`    | Filters games by platform and outputs a new SQLite DB.  |
+| `4-generate_embeddings.py`         | Generates OpenAI embeddings for each game.              |
+| `5-ingest_to_astra_db.py`          | Ingests the enriched data into Astra DB.                |
+| `.env.example`                     | Example environment file for API keys and Astra config. |
+| `requirements.txt`                 | Python dependencies.                                    |
+| `game_data_live.db`                | Main SQLite database with all fetched games.            |
+| `game_data_filtered.db`            | Filtered SQLite database (e.g., PlayStation only).      |
 
 ---
 
 ## Notes & Tips
 
-- **API Rate Limiting:** Scripts respect RAWG API rate limits (10 requests/sec). If you hit limits, increase sleep times.
-- **Interruptions:** `1-fetch_games.py` saves progress on interruption (Ctrl+C).
+- **API Rate Limiting:** Scripts respect RAWG and OpenAI rate limits. If you hit limits, increase sleep times in the scripts.
+- **Interruptions:** All scripts handle Ctrl+C gracefully and flush pending data.
 - **Data Cleaning:** All text fields are cleaned for UTF-8 and HTML tags are removed from descriptions.
-- **Batch Export:** Batch size and output directories can be changed at the top of `3-export_sqlite_to_csv_json.py`.
-- **Custom Input/Output:** You can change input/output filenames by editing the constants at the top of each script.
+- **Custom Filtering:** Change `PLATFORM_KEYWORDS` in `3-filter_games_by_platform.py` to filter for other platforms.
+- **Embeddings:** Embeddings are stored as JSON arrays in the `embedding` column.
+- **Astra DB:** Make sure your Astra DB collection is vector-enabled and the environment variables are set.
 
 ---
 
@@ -143,19 +161,23 @@ python 4-fetch_unfetched_games.py
 
 1. Fetch games:
    ```bash
-   python 1-fetch_games.py
+   python 1-fetch_games_by_page.py
    ```
-2. Clean and load into SQLite:
+2. (Optional) Fetch missing games by ID:
    ```bash
-   python 2-cleaned_json_to_sqlite.py
+   python 2-fetch_unfetched_games_by_id.py
    ```
-3. Export to CSV/JSON batches:
+3. Filter by platform:
    ```bash
-   python 3-export_sqlite_to_csv_json.py --format both
+   python 3-filter_games_by_platform.py
    ```
-4. (Optional) Fetch missing games by ID:
+4. Generate embeddings:
    ```bash
-   python 4-fetch_unfetched_games.py
+   python 4-generate_embeddings.py
+   ```
+5. Ingest to Astra DB:
+   ```bash
+   python 5-ingest_to_astra_db.py
    ```
 
 ---
